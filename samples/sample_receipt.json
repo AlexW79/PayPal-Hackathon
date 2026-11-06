@@ -1,0 +1,19 @@
+{
+  "merchant": "The Harbour Kitchen",
+  "date": "2026-11-05",
+  "currency": "USD",
+  "items": [
+    {"name": "Margherita Pizza", "quantity": 1, "total_price": 16.50},
+    {"name": "Classic Cheeseburger", "quantity": 1, "total_price": 15.00},
+    {"name": "Loaded Nachos", "quantity": 1, "total_price": 12.00},
+    {"name": "Craft Beer", "quantity": 3, "total_price": 21.00},
+    {"name": "Lemonade", "quantity": 1, "total_price": 4.50},
+    {"name": "Chocolate Lava Cake", "quantity": 1, "total_price": 9.00}
+  ],
+  "subtotal": 78.00,
+  "tax": 6.63,
+  "tip": null,
+  "service_charge": null,
+  "discount": null,
+  "total": 84.63
+}

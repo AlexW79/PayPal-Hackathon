@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SplitSnap</title>
+  <meta name="theme-color" content="#003087">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23003087'/%3E%3Cpath d='M9 11h14M9 16h14M9 21h9' stroke='%23009CDE' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-a">Split</span><span class="brand-b">Snap</span></div>
+      <div class="badges" id="modeBadges"></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <ol class="stepper" id="stepper">
+      <li data-step="1"><span>1</span>Scan</li>
+      <li data-step="2"><span>2</span>Who had what</li>
+      <li data-step="3"><span>3</span>Review</li>
+      <li data-step="4"><span>4</span>Request</li>
+    </ol>
+
+    <!-- STEP 1: scan -->
+    <section class="screen" id="screen-1">
+      <h1>Split a bill in seconds</h1>
+      <p class="lead">Snap or upload the bill, tell us who had what, and we'll send everyone a PayPal request for their share.</p>
+
+      <div class="card" id="scanCard">
+        <div class="dropzone" id="dropzone">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1.2-1.6A1 1 0 0 1 9.6 4h4.8a1 1 0 0 1 .8.4L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12.5" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg>
+          <p class="dz-title">Add a photo of your bill</p>
+          <p class="muted small">Lay it flat with good light. JPG, PNG or HEIC.</p>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btnCamera" type="button">Take photo</button>
+            <button class="btn btn-outline" id="btnUpload" type="button">Upload image</button>
+          </div>
+          <button class="link" id="btnSample" type="button">No bill handy? Try a sample bill</button>
+          <button class="btn btn-outline btn-block resume hidden" id="btnResume" type="button">Track your last split →</button>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+          <input type="file" id="captureInput" accept="image/*" capture="environment" hidden>
+        </div>
+        <div class="scanning hidden" id="scanning">
+          <img id="previewImg" alt="Your bill">
+          <div class="scan-overlay"><div class="scanline"></div></div>
+          <p class="scan-text"><span class="spinner"></span> Reading your bill with AI…</p>
+        </div>
+      </div>
+
+      <div class="card hidden" id="receiptCard">
+        <div class="card-head">
+          <div>
+            <h2 id="merchantName">Your bill</h2>
+            <p class="muted small" id="receiptMeta"></p>
+          </div>
+          <button class="link" id="btnRescan" type="button">Rescan</button>
+        </div>
+        <p class="hint">Check the items. Tap any name or price to fix it.</p>
+        <ul class="items" id="itemsList"></ul>
+        <button class="link add-item" id="btnAddItem" type="button">+ Add item</button>
+        <div class="totals" id="totalsBox"></div>
+        <button class="btn btn-primary btn-block" id="btnToStep2" type="button">Continue</button>
+      </div>
+    </section>
+
+    <!-- STEP 2: describe -->
+    <section class="screen hidden" id="screen-2">
+      <h1>Who had what?</h1>
+      <p class="lead">Type it or say it, just like you'd tell a friend.</p>
+      <div class="card">
+        <label class="field">
+          <span>Your name</span>
+          <input type="text" id="payerName" value="Me" autocomplete="given-name">
+        </label>
+        <label class="field">
+          <span>Describe the split</span>
+          <div class="voice-box">
+            <textarea id="description" rows="6" placeholder="e.g. I had the burger. Sam and Priya shared the nachos. Sam had two beers and I had one. Everyone split the dessert. Sam's email is sam@example.com"></textarea>
+            <button class="mic" id="btnMic" type="button" aria-label="Speak instead of typing">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <span class="muted small" id="micStatus">Tap the mic to talk. You can mention emails too.</span>
+        </label>
+        <div class="chips" id="itemChips"></div>
+        <div class="btn-row spread">
+          <button class="btn btn-ghost" id="btnBack1" type="button">Back</button>
+          <button class="btn btn-primary" id="btnSplit" type="button">Split the bill</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: review -->
+    <section class="screen hidden" id="screen-3">
+      <h1>Here's the split</h1>
+      <p class="lead">Tax, tip and service are shared in proportion to what each person had.</p>
+      <div class="notice hidden" id="aiNotes"></div>
+      <div class="summary card" id="summary"></div>
+      <div id="peopleCards"></div>
+      <div class="card">
+        <label class="field">
+          <span>Message on the request (optional)</span>
+          <input type="text" id="note" placeholder="Thanks for dinner, everyone!">
+        </label>
+        <button class="btn btn-pay btn-block" id="btnSend" type="button">
+          Send requests with <b>PayPal</b>
+        </button>
+        <button class="btn btn-ghost btn-block" id="btnBack2" type="button">Edit who had what</button>
+      </div>
+    </section>
+
+    <!-- STEP 4: done -->
+    <section class="screen hidden" id="screen-4">
+      <div class="done-hero">
+        <div class="check"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h1 id="doneTitle">Requests sent</h1>
+        <p class="lead" id="doneLead"></p>
+      </div>
+      <div class="card tracker hidden" id="tracker">
+        <div class="tracker-top">
+          <div>
+            <div class="label">Collected so far</div>
+            <div class="value"><span id="collected">$0.00</span> <span class="of" id="collectedOf"></span></div>
+          </div>
+          <div class="live" id="live" title="Checks PayPal every few seconds"><span class="dot"></span><span id="liveText">Live</span></div>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="bar" id="progressBar"></div></div>
+        <div class="tracker-foot"><span id="progressText"></span><button class="link" id="btnRefresh" type="button">Refresh</button></div>
+      </div>
+      <div class="card" id="results"></div>
+      <button class="btn btn-primary btn-block" id="btnRestart" type="button">Split another bill</button>
+    </section>
+  </main>
+
+  <!-- camera modal (desktop / webcams) -->
+  <div class="modal hidden" id="cameraModal" role="dialog" aria-modal="true" aria-label="Take a photo">
+    <div class="modal-box">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="btn-row spread">
+        <button class="btn btn-ghost light" id="btnCamCancel" type="button">Cancel</button>
+        <button class="shutter" id="btnShutter" type="button" aria-label="Take photo"></button>
+        <span style="width:84px"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast" role="alert"></div>
+
+  <footer class="foot">Payments run in the PayPal sandbox · AI by Google Gemini · Hackathon demo</footer>
+  <script src="app.js"></script>
+</body>
+</html>
