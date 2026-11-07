@@ -3,7 +3,7 @@ import uuid
 
 import httpx
 
-from . import config
+from . import config, contacts
 
 
 class PayPalError(RuntimeError):
@@ -41,18 +41,24 @@ class PayPal:
             raise PayPalError(f"PayPal {method} {path.split('?')[0]} failed ({r.status_code}): {msg.strip()}")
         return r.json() if r.content else {}
 
-    def send_invoice(self, person: dict, split: dict, payer: str, note: str) -> dict:
+    def send_invoice(self, person: dict, split: dict, payer: str, note: str,
+                     extra_lines: list[tuple[str, int]] = (), offset_cents: int = 0) -> dict:
+        """extra_lines: e.g. older unpaid balances rolled into this invoice.
+        offset_cents: money the payer owes this person, taken off as a discount."""
         cur = split["currency"]
         money = lambda cents: {"currency_code": cur, "value": f"{cents / 100:.2f}"}  # noqa: E731
 
         items = [{"name": l["label"][:200], "quantity": "1", "unit_amount": money(l["cents"])}
                  for l in person["lines"]]
-        discount = None
+        discount_cents = offset_cents
         if person["extras_cents"] > 0:
             items.append({"name": "Share of tax, tip & service", "quantity": "1",
                           "unit_amount": money(person["extras_cents"])})
         elif person["extras_cents"] < 0:
-            discount = {"invoice_discount": {"amount": money(-person["extras_cents"])}}
+            discount_cents += -person["extras_cents"]
+        for label, cents in extra_lines:
+            items.append({"name": label[:200], "quantity": "1", "unit_amount": money(cents)})
+        discount = {"invoice_discount": {"amount": money(discount_cents)}} if discount_cents > 0 else None
 
         where = split.get("merchant") or "the bill"
         body = {
@@ -103,6 +109,30 @@ class PayPal:
         self._call("POST", f"/v2/invoicing/invoices/{invoice_id}/remind", json={
             "subject": subject[:100], "note": note[:4000],
             "send_to_invoicer": False, "send_to_recipient": True})
+
+    # ---------- existing balances ----------
+    def open_invoices(self, email: str) -> list[dict]:
+        """Unpaid invoices you've sent to this email address."""
+        found = self._call("POST", "/v2/invoicing/search-invoices?page=1&page_size=20", json={
+            "recipient_email": email, "status": ["SENT", "UNPAID", "PARTIALLY_PAID"]})
+        out = []
+        for item in found.get("items", []):
+            inv = self._call("GET", f"/v2/invoicing/invoices/{item['id']}")
+            due = inv.get("due_amount", {}).get("value")
+            due_cents = round(float(due) * 100) if due is not None else \
+                round(float(inv.get("amount", {}).get("value", 0)) * 100)
+            if due_cents <= 0:
+                continue
+            labels = [i.get("name", "") for i in inv.get("items", [])][:3]
+            out.append({"id": inv["id"], "number": inv.get("detail", {}).get("invoice_number"),
+                        "date": inv.get("detail", {}).get("invoice_date"), "due_cents": due_cents,
+                        "label": ", ".join(l for l in labels if l) or "Earlier request"})
+        return out
+
+    def cancel(self, invoice_id: str, note: str) -> None:
+        self._call("POST", f"/v2/invoicing/invoices/{invoice_id}/cancel", json={
+            "subject": "Invoice replaced", "note": note[:4000],
+            "send_to_invoicer": True, "send_to_recipient": True})
 
 
 _client: PayPal | None = None
@@ -169,26 +199,123 @@ def demo_pay(invoice_id: str) -> dict:
     return {"ok": True}
 
 
-def send_all(split: dict, payer: str, note: str) -> list[dict]:
-    """Send an invoice to everyone except the payer. Returns one result per person."""
+def _seed_demo_balances() -> None:
+    """Demo mode: an older unpaid request to Priya, so "combine balances" can be shown."""
+    if not DEMO_INVOICES:
+        DEMO_INVOICES["DEMO-OLD-0007"] = {
+            "status": "UNPAID", "paid_cents": 0, "total_cents": 1250, "number": "DEMO-0007",
+            "email": "priya.patel@example.com", "label": "Coffee run", "date": "2026-10-30"}
+
+
+def open_invoices(email: str | None) -> list[dict]:
+    """Unpaid invoices already sent to this person (real PayPal, or simulated in demo mode)."""
+    if not email:
+        return []
     pp = client()
+    if pp is None:
+        _seed_demo_balances()
+        return [{"id": k, "number": v.get("number", k), "date": v.get("date"), "label": v.get("label", "Earlier request"),
+                 "due_cents": v["total_cents"] - v["paid_cents"]}
+                for k, v in DEMO_INVOICES.items()
+                if (v.get("email") or "").lower() == email.lower() and _state(v["status"]) == "waiting"]
+    return pp.open_invoices(email)
+
+
+def balances(people: list[dict]) -> list[dict]:
+    """For each person: their unpaid invoices from you, and what you owe them."""
+    out = []
+    for p in people:
+        contact, ious = contacts.ious_for(p.get("email"), p.get("name"))
+        try:
+            invoices, error = open_invoices(p.get("email") or (contact or {}).get("email")), None
+        except (PayPalError, httpx.HTTPError) as e:
+            invoices, error = [], str(e)
+        out.append({"name": p.get("name"), "email": p.get("email"),
+                    "contact_id": contact["id"] if contact else None,
+                    "contact_email": contact.get("email") if contact else None,
+                    "open_invoices": invoices, "i_owe": ious, "error": error})
+    return out
+
+
+def _cancel(pp: "PayPal | None", invoice_id: str, note: str) -> None:
+    if pp is None or invoice_id in DEMO_INVOICES:
+        if invoice_id in DEMO_INVOICES:
+            DEMO_INVOICES[invoice_id]["status"] = "CANCELLED"
+        return
+    pp.cancel(invoice_id, note)
+
+
+def send_all(split: dict, payer: str, note: str, adjustments: dict | None = None) -> list[dict]:
+    """Send an invoice to everyone except the payer. Returns one result per person.
+
+    adjustments: {email: {"combine_invoice_ids": [...], "offset_iou_ids": [...]}}
+      - combine: roll older unpaid invoices into this one (the old ones are cancelled)
+      - offset: take money you owe this person off their share (one payment, not two)
+    Amounts are always re-read from PayPal / the contacts store, never trusted from the browser."""
+    pp = client()
+    adjustments = {k.lower(): v for k, v in (adjustments or {}).items()}
     results = []
     for p in split["people"]:
         if p["is_me"] or p["total_cents"] <= 0:
             continue
-        base = {"name": p["name"], "email": p["email"], "total_cents": p["total_cents"],
-                "items": [l["label"] for l in p["lines"]]}
+        base = {"name": p["name"], "email": p["email"], "share_cents": p["total_cents"],
+                "total_cents": p["total_cents"], "items": [l["label"] for l in p["lines"]]}
         if not p.get("email"):
             results.append({**base, "ok": False, "error": "Missing email address"})
             continue
-        if pp is None:
-            inv_id = f"DEMO-{uuid.uuid4().hex[:8].upper()}"
-            DEMO_INVOICES[inv_id] = {"status": "UNPAID", "paid_cents": 0, "total_cents": p["total_cents"]}
-            results.append({**base, "ok": True, "simulated": True, "status": "UNPAID",
-                            "invoice_id": inv_id, "pay_url": None})
-            continue
+
+        adj = adjustments.get(p["email"].lower(), {})
         try:
-            results.append({**base, "ok": True, "simulated": False, **pp.send_invoice(p, split, payer, note)})
+            combined = [i for i in open_invoices(p["email"]) if i["id"] in set(adj.get("combine_invoice_ids", []))]
+        except (PayPalError, httpx.HTTPError) as e:
+            results.append({**base, "ok": False, "error": f"Couldn't check earlier invoices: {e}"})
+            continue
+        contact, ious = contacts.ious_for(p["email"], p["name"])
+        offset_ids = [i["id"] for i in ious if i["id"] in set(adj.get("offset_iou_ids", []))]
+        iou_total = sum(i["cents"] for i in ious if i["id"] in offset_ids)
+
+        combine_cents = sum(i["due_cents"] for i in combined)
+        gross = p["total_cents"] + combine_cents
+        offset = min(iou_total, gross)
+        net = gross - offset
+        base.update(total_cents=net, combined=[{"number": i["number"], "cents": i["due_cents"]} for i in combined],
+                    offset_cents=offset, still_owe_cents=iou_total - offset)
+
+        try:
+            if net <= 0:
+                # What you owe them covers everything: no new payment needed.
+                result = {**base, "ok": True, "settled": True, "simulated": pp is None,
+                          "invoice_id": None, "status": "SETTLED", "pay_url": None}
+            elif pp is None:
+                inv_id = f"DEMO-{uuid.uuid4().hex[:8].upper()}"
+                DEMO_INVOICES[inv_id] = {"status": "UNPAID", "paid_cents": 0, "total_cents": net,
+                                         "email": p["email"], "number": inv_id,
+                                         "label": split.get("merchant") or "Bill split"}
+                result = {**base, "ok": True, "simulated": True, "status": "UNPAID",
+                          "invoice_id": inv_id, "pay_url": None}
+            else:
+                extra = [(f"Earlier unpaid balance (invoice #{i['number']})", i["due_cents"]) for i in combined]
+                result = {**base, "ok": True, "simulated": False,
+                          **pp.send_invoice(p, split, payer, note, extra_lines=extra, offset_cents=offset)}
         except (PayPalError, httpx.HTTPError) as e:
             results.append({**base, "ok": False, "error": str(e)})
+            continue
+
+        # Only after the new invoice exists: close the old ones and record the netted debt.
+        warnings = []
+        replaced_by = f"invoice #{result.get('invoice_number') or result.get('invoice_id')}" if result.get("invoice_id") \
+            else "money I owed you"
+        for i in combined:
+            try:
+                _cancel(pp, i["id"], f"This balance was combined into {replaced_by}. Thanks!")
+            except (PayPalError, httpx.HTTPError) as e:
+                warnings.append(f"Couldn't cancel old invoice #{i['number']}: {e}")
+        if offset and contact:
+            contacts.settle_ious(contact["id"], offset_ids, offset)
+        results.append({**result, "warnings": warnings})
+
+        try:
+            contacts.upsert(p["name"], p["email"])
+        except ValueError:
+            pass
     return results

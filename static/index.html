@@ -15,7 +15,13 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand"><span class="brand-a">Split</span><span class="brand-b">Snap</span></div>
-      <div class="badges" id="modeBadges"></div>
+      <div class="top-right">
+        <button class="top-btn" id="btnContacts" type="button" aria-label="Contacts">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 19c.8-3.3 3.3-5 6.5-5s5.7 1.7 6.5 5M16 5.5a3 3 0 0 1 0 5.6M18.5 14.4c1.5.8 2.6 2.3 3 4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Contacts</span>
+        </button>
+        <div class="badges" id="modeBadges"></div>
+      </div>
     </div>
   </header>
 
@@ -88,6 +94,12 @@
           </div>
           <span class="muted small" id="micStatus">Tap the mic to talk. You can mention emails too.</span>
         </label>
+        <div class="clarify hidden" id="clarifyBar" role="status" aria-live="polite"></div>
+        <div class="picker">
+          <div class="picker-head"><span>People</span><button class="link small" id="btnManageContacts" type="button">Manage contacts</button></div>
+          <div class="contact-chips" id="contactChips"></div>
+        </div>
+        <div class="picker-head"><span>Items</span></div>
         <div class="chips" id="itemChips"></div>
         <div class="btn-row spread">
           <button class="btn btn-ghost" id="btnBack1" type="button">Back</button>
@@ -147,6 +159,23 @@
         <button class="shutter" id="btnShutter" type="button" aria-label="Take photo"></button>
         <span style="width:84px"></span>
       </div>
+    </div>
+  </div>
+
+  <!-- contacts modal -->
+  <div class="modal hidden" id="contactsModal" role="dialog" aria-modal="true" aria-labelledby="contactsTitle">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 id="contactsTitle">Contacts</h2>
+        <button class="icon-btn close" id="btnCloseContacts" type="button" aria-label="Close">✕</button>
+      </div>
+      <p class="muted small">People you split with. Add what <b>you owe</b> someone, and SplitSnap will take it off their next request instead of making two payments.</p>
+      <form class="add-contact" id="addContactForm">
+        <input type="text" id="newName" placeholder="Full name" required autocomplete="off">
+        <input type="email" id="newEmail" placeholder="PayPal email" autocomplete="off">
+        <button class="btn btn-primary" type="submit">Add</button>
+      </form>
+      <div id="contactsList"></div>
     </div>
   </div>
 

@@ -14,6 +14,8 @@ Built for the *Build What's Next with PayPal and AI* hackathon.
 | 2. Who had what | Type or **speak** a plain-English description. Voice uses the browser's speech recognition, or Gemini audio transcription as a fallback. | Web Speech API / **Gemini** |
 | 3. Review | AI turns the description into item assignments (incl. "two of the three beers"). **Python does all the maths**: shares, proportional tax/tip, cent-exact rounding that always matches the bill total. | **Gemini** + deterministic Python |
 | 4. Request | One click sends a PayPal invoice to each person, itemised with their share. Friends pay with PayPal. | **PayPal Invoicing v2 API** (sandbox) |
+| Contacts & "which Matt?" | Saved contacts appear as chips under the description; tap one to insert their name. While you type or talk, SplitSnap asks about names that could be several people ("Which Matt? Matt Smith / Matt Peters") and likely misspellings ("Pirya" → Priya), and fixes the text with one tap. Gemini also gets your contacts, so it fills in emails and flags anything still unclear. | Browser + **Gemini** |
+| Settle balances | Before sending, SplitSnap checks **existing balances**: unpaid PayPal invoices that person already owes you are rolled into the new request (the old invoice is cancelled), and money *you* owe them (logged in Contacts) is taken off. One payment instead of two; if your debt covers their share, no request is sent at all. | **PayPal Invoicing** (search, cancel, discounts) |
 | 5. Track & remind | A live tracker checks each invoice every few seconds: "Collected $50 of $90", a status per friend, and a 🎉 when someone pays. **Remind** drafts a personal nudge whose tone escalates (friendly, then clear, then firm); you edit it and it's sent through PayPal. | **PayPal Invoicing** (status + remind) + **Gemini** |
 
 **Design principle:** the AI understands, and code does the arithmetic. Gemini extracts items and interprets
@@ -65,7 +67,8 @@ Try this description:
 server.py              FastAPI app + API routes, serves the front end
 splitter/ai.py         Gemini: receipt reading, split planning, transcription (+ demo mode)
 splitter/billing.py    Exact money maths (fractions, proportional extras, largest-remainder rounding)
-splitter/paypal.py     PayPal OAuth + Invoicing v2 (create, send, fetch pay link)
+splitter/paypal.py     PayPal OAuth + Invoicing v2 (create, send, status, remind, search, cancel)
+splitter/contacts.py   Saved contacts + money you owe them (data/contacts.json, not committed)
 static/                Front end (plain HTML/CSS/JS, PayPal-inspired styling, no build step)
 samples/               Sample receipt (JSON + photo)
 ```
@@ -83,7 +86,7 @@ samples/               Sample receipt (JSON + photo)
 ## PayPal technology used
 
 - **PayPal REST OAuth 2.0** (client credentials)
-- **Invoicing v2 API**: `generate-next-invoice-number`, create invoice, send invoice, get invoice (payer link and live payment status), **remind** (send a payment reminder)
+- **Invoicing v2 API**: `generate-next-invoice-number`, create invoice, send invoice, get invoice (payer link and live payment status), **remind** (send a payment reminder), **search invoices** (find a friend's unpaid balance), **cancel** (replace an old invoice when balances are combined), invoice discounts (net off money you owe)
 
 ## License
 

@@ -1,11 +1,10 @@
-"""SplitSnap web server.   Run:  uvicorn server:app --reload   then open http://localhost:8000"""
 import logging
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from splitter import ai, billing, config, paypal
+from splitter import ai, billing, config, contacts, paypal
 
 log = logging.getLogger("splitsnap")
 app = FastAPI(title="SplitSnap")
@@ -13,7 +12,6 @@ app = FastAPI(title="SplitSnap")
 
 @app.middleware("http")
 async def no_cache(request, call_next):
-    # Always serve the latest front-end files (handy while building and demoing).
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-cache"
     return response
@@ -28,6 +26,8 @@ def _ai_error(e: Exception) -> HTTPException:
         pass  # demo-mode messages are already user-friendly
     elif "API key" in msg or "API_KEY" in msg or "PERMISSION_DENIED" in msg:
         msg = "Gemini rejected the API key. Check GEMINI_API_KEY in .env."
+    elif "timed out" in msg.lower() or "timeout" in type(e).__name__.lower():
+        msg = "Gemini didn't respond in time. Please try again in a minute."
     elif "UNAVAILABLE" in msg or "503" in msg:
         msg = "Gemini is very busy right now. Please try again in a minute."
     elif "RESOURCE_EXHAUSTED" in msg or "429" in msg:
@@ -87,29 +87,96 @@ def split(req: SplitRequest):
     if not req.receipt.items:
         raise HTTPException(400, "The bill has no items.")
     payer = req.payer.strip() or "Me"
+    saved = contacts.list_contacts()
     try:
-        plan = ai.plan_split(req.receipt, req.description, payer)
+        plan = ai.plan_split(req.receipt, req.description, payer, saved)
     except Exception as e:  # noqa: BLE001
         raise _ai_error(e)
+    # A name could be more than one contact: ask the user before splitting.
+    unclear = [a.model_dump() for a in plan.ambiguous if len(a.options) > 1]
+    if unclear:
+        return {"clarify": unclear}
     try:
-        return billing.compute(req.receipt, plan)
+        result = billing.compute(req.receipt, plan)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    for p in result["people"]:  # fill in emails from saved contacts
+        if not p["is_me"] and not p["email"]:
+            c = contacts.find(name=p["name"])
+            if c and c.get("email"):
+                p["email"] = c["email"]
+    return result
 
 
 class SendRequest(BaseModel):
     split: dict
     payer: str = "Me"
     note: str = ""
+    adjustments: dict = {}
 
 
 @app.post("/api/send")
 def send(req: SendRequest):
-    return {"results": paypal.send_all(req.split, req.payer.strip() or "Me", req.note.strip()),
+    return {"results": paypal.send_all(req.split, req.payer.strip() or "Me", req.note.strip(), req.adjustments),
             "mode": config.PAYPAL_ENV if config.paypal_enabled() else "demo"}
 
 
-# ---------------- tracking & reminders ----------------
+# contacts and balances
+
+@app.get("/api/contacts")
+def get_contacts():
+    return {"contacts": contacts.list_contacts()}
+
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str | None = None
+
+
+@app.post("/api/contacts")
+def save_contact(req: ContactRequest):
+    try:
+        return contacts.upsert(req.name, req.email)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/contacts/{contact_id}")
+def delete_contact(contact_id: str):
+    contacts.delete(contact_id)
+    return {"ok": True}
+
+
+class IouRequest(BaseModel):
+    amount: float
+    note: str = ""
+    currency: str = "USD"
+
+
+@app.post("/api/contacts/{contact_id}/iou")
+def add_iou(contact_id: str, req: IouRequest):
+    try:
+        return contacts.add_iou(contact_id, round(req.amount * 100), req.note, req.currency)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/contacts/{contact_id}/iou/{iou_id}")
+def delete_iou(contact_id: str, iou_id: str):
+    contacts.remove_iou(contact_id, iou_id)
+    return {"ok": True}
+
+
+class BalancesRequest(BaseModel):
+    people: list[dict]
+
+
+@app.post("/api/balances")
+def get_balances(req: BalancesRequest):
+    return {"balances": paypal.balances(req.people[:20])}
+
+
+#tracking and reminders
 
 class StatusRequest(BaseModel):
     invoice_ids: list[str]

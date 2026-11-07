@@ -1,0 +1,9 @@
+{
+ "contacts": [
+  {"id": "c-sam", "name": "Sam Lee", "email": "sam.lee@example.com", "i_owe": []},
+  {"id": "c-priya", "name": "Priya Patel", "email": "priya.patel@example.com", "i_owe": []},
+  {"id": "c-mattsmith", "name": "Matt Smith", "email": "matt.smith@example.com", "i_owe": []},
+  {"id": "c-mattpeters", "name": "Matt Peters", "email": "matt.peters@example.com",
+   "i_owe": [{"id": "iou-cinema", "cents": 1500, "currency": "USD", "note": "Cinema tickets", "date": "2026-11-01"}]}
+ ]
+}
