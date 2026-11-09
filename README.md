@@ -35,6 +35,18 @@ uvicorn server:app --reload
 
 Open **http://localhost:8000** (the camera and microphone work on `localhost`; on other hosts they need HTTPS).
 
+### Deploy on Render
+
+The repo includes a `render.yaml` blueprint, so it deploys as a free Render web service with HTTPS
+(phones need HTTPS for the camera and microphone).
+
+1. In the Render dashboard choose **New → Blueprint** and connect this GitHub repo.
+2. Enter `GEMINI_API_KEY`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` when asked (leave any blank for demo mode).
+3. Click **Apply**. The app is live at `https://splitsnap-xxxx.onrender.com` after a few minutes.
+
+On the free plan the service sleeps after 15 minutes idle (the first visit takes about a minute to wake),
+and saved contacts reset to the samples on each restart.
+
 ### Keys (both free)
 
 | Key | Where | Without it |

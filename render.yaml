@@ -1,0 +1,21 @@
+# Render Blueprint: deploys SplitSnap as one free web service.
+# Render dashboard -> New -> Blueprint -> pick this repo. Keys are asked for during setup.
+services:
+  - type: web
+    name: splitsnap
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/config
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
