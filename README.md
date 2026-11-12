@@ -5,7 +5,7 @@ nachos, everyone split dessert"), and SplitSnap sends each friend a **PayPal inv
 their share, with tax and tip split fairly.
 
 Built for the *Build What's Next with PayPal and AI* hackathon.
-Try it here using Render: https://splitsnap-2rlf.onrender.com/
+Try it here using Render: https://splitsnap-2rlf.onrender.com/      
 View the Demo Video here: https://youtu.be/GA_44Pckg5s
 
 ## How it works
